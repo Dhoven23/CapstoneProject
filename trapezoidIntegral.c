@@ -9,7 +9,7 @@ double trap_out[1000];
 float dt = 0.0001;
 
 float Trapezoid(float trap, int t){
-    trap += (dt/2)*(cos_out[t]+cos_out[t+1]);
+    trap += (dt/2)*(cos_out[t-1]+cos_out[t]);
     return trap;
 }
 
