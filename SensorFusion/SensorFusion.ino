@@ -127,25 +127,31 @@ void loop() {
 //            Serial.println(" |");
 //          }
 
+    
+
     float gravity[3] = {0, 0, 1},
           rot_quat[4] = {q0, q1, q2, q3},
           rot_quat2[4] = {q0,-q1,-q2,-q3},
           rot_gravity[4],
-          acc_quat = 
+          acc_quat[4] = {0,acc_x,acc_y,acc_z};
+                      
           
       
     // Rotate Gravity
     HamiltonProduct(rot_quat, gravity_quaternion);
     HamiltonProduct(C,rot_quat2); 
 
+    // Store output
+    for(int i=0;i<4;i++){
+      rot_gravity[i] = C[i];
+    }
+
     // Rotate Acceleration
     HamiltonProduct(rot_quat, acc_quat);
     HamiltonProduct(C,rot_quat2);
 
-    
-
     for(int i=0;i<4;i++){
-      rot_gravity[i] = C[i];
+      acc_quat[i] = C[i];
     }
     
     
