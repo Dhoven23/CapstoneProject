@@ -1,11 +1,3 @@
-/* This code is free and open source. I only ask that if you use my code in an academic setting, reference it appropriately. 
-*  I mean, an extra citation can't hurt can it?
-* 
-* Author: Daniel Hoven
-* Univeristy: Grand Canyon University
-* Email: Daniel.Hoven@gcu.edu
-*/
-
 /* This code is for sensor fusion of IMU data with barometric altitude 
  *  and accelerometer data for odometric calculation of position. 
  */
@@ -46,7 +38,7 @@ float acc_x = 0,
       av_alt[10],
       C[4];
 
-float gravity_quaternion[4] = {0, 0, 0, 10.1};
+float gravity_quaternion[4] = {0, 0, 0, 10};
 
       
 // Declare Processor dependent vars.       
@@ -62,10 +54,10 @@ void setup() {
 
   // Initialize Barometer
   if (!bmp.begin()) {
-	  Serial.println("Could not find a valid BMP085 sensor, check wiring!");
-	  while (1) {
-	    delay(10);
-	    }
+    Serial.println("Could not find a valid BMP085 sensor, check wiring!");
+    while (1) {
+      delay(10);
+      }
   }
 
   // Initialize Accelerometer
@@ -135,33 +127,35 @@ void loop() {
 //            Serial.println(" |");
 //          }
 
-    
-
     float gravity[3] = {0, 0, 1},
-          rot_quat[4] = {q0, q1, q2, q3},
-          rot_quat2[4] = {q0,-q1,-q2,-q3},
+          rot_quat[4],
+          rot_quat2[4],
           rot_gravity[4],
-          acc_quat[4] = {0,acc_x,acc_y,acc_z};
-                      
-          
+          acc_quat[4] = {
+            0,
+            acc_x,
+            acc_y,
+            acc_z,
+          },
+          vec_p[4] = {0,1,0,0};
+
+    
+    // rotate vec_p by q
+
+    // project p' onto xy plane
+
+    // calculate angle theta between p and p", be careful of sign
+
+    // create a quaternion z = [cos(theta/2), sin(theta/2)*rx, sin(theta/2)*ry, sin(theta/2
       
     // Rotate Gravity
     HamiltonProduct(rot_quat, gravity_quaternion);
     HamiltonProduct(C,rot_quat2); 
 
-    // Store output
+    
     for(int i=0;i<4;i++){
       rot_gravity[i] = C[i];
     }
-
-    // Rotate Acceleration
-    HamiltonProduct(rot_quat, acc_quat);
-    HamiltonProduct(C,rot_quat2);
-
-    for(int i=0;i<4;i++){
-      acc_quat[i] = C[i];
-    }
-    
     
     //acc_x-=rot_gravity[1]; // Remove Gravity (i)
     //acc_y-=rot_gravity[2]; // Remove Gravity (j)
@@ -172,17 +166,16 @@ void loop() {
     Serial.print(" gravity.x "),Serial.print(rot_gravity[1],2);
     Serial.print(" gravity.y "),Serial.print(rot_gravity[2],2);
     Serial.print(" gravity.z "),Serial.println(rot_gravity[3],2);
-    Serial.print(" acc.x: "),Serial.print(acc_x);
-    Serial.print(" acc.y: "),Serial.print(acc_y);
-    Serial.print(" acc.z: "),Serial.println(acc_z);
+    Serial.print(" acc.x: "),Serial.print(acc_quat[1]);
+    Serial.print(" acc.y: "),Serial.print(acc_quat[2]);
+    Serial.print(" acc.z: "),Serial.println(acc_quat[3]);
     Serial.print(" roll: "),Serial.print(gamma);
     Serial.print(" pitch: "),Serial.print(beta);
     Serial.print(" yaw: "),Serial.println(alpha);
     
     
     //Serial.print(", Alt: "),Serial.print(alt*100),Serial.println(" cm");
-    
-    delay(10);
+   
 }
 
 
