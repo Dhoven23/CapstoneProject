@@ -1,3 +1,11 @@
+/* This code is free and open source. I only ask that if you use my code in an academic setting, reference it appropriately. 
+*  I mean, an extra citation can't hurt can it?
+* 
+* Author: Daniel Hoven
+* Univeristy: Grand Canyon University
+* Email: Daniel.Hoven@gcu.edu
+*/
+
 /* This code is for sensor fusion of IMU data with barometric altitude 
  *  and accelerometer data for odometric calculation of position. 
  */
