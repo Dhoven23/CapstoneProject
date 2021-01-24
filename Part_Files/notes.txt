@@ -1,0 +1,1 @@
+Here are the solidworks files for the mechanical buidl of the project. The stl's are also provided if you wish to 3D print any part. Feel free to contribute any ideas or improvements to the existing designs.
