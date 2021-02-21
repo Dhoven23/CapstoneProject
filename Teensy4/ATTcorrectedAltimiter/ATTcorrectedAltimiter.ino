@@ -87,7 +87,7 @@ void setup(void)
 
   /* Initialize timed functions */
 
-  USART1_receiveData.begin(receive_data, 50000);
+  USART1_receiveData.begin(receive_data, 1000);
   SwitchMode.begin(ModeSelect, 100000);
   
 }
@@ -162,7 +162,7 @@ void ModeSelect() {
         Serial.println("IMU rebooted... ");
         BNO055_getSampleTimer.begin(get_IMU_sample, 10000);
         USART1_printData.begin(print_data, 10000);
-        USART1_receiveData.begin(receive_data, 50000);
+        USART1_receiveData.begin(receive_data, 1000);
         SwitchMode.begin(ModeSelect, 100000);
         Serial.println("Jobs restarted");
         temp = 'N';
@@ -172,7 +172,7 @@ void ModeSelect() {
     
         BNO055_getSampleTimer.begin(get_IMU_sample, 10000);
         USART1_printData.begin(print_data, 10000);
-        USART1_receiveData.begin(receive_data, 50000);
+        USART1_receiveData.begin(receive_data, 1000);
       break;
       
     case 'Q': //quit

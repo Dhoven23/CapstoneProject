@@ -11,10 +11,10 @@
 #define kp 1
 #define ki 0.1
 #define kd 0.5
-#define LQRmult 0.5
+#define LQRmult 0.25
 
 /* Set the delay between fresh samples */
-#define BNO055_SAMPLERATE_DELAY_MS 50
+#define BNO055_SAMPLERATE_DELAY_MS 1
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 
@@ -26,7 +26,9 @@ PWMServo esc1,
 IntervalTimer BNO055_getSampleTimer;
 IntervalTimer USART1_printData;
 IntervalTimer USART1_receiveData;
-IntervalTimer TFMini_getDistance;
+
+
+
 
 int cycletime = 0,
     pos = 0,
@@ -35,9 +37,14 @@ int cycletime = 0,
     E_old,
     tim_old = 0;
 
-volatile double _q0 = 0, 
-                _q1 = 1, 
-                _q2 = 0, 
+int e1 = 0,
+    e2 = 0,
+    e3 = 0,
+    e4 = 0;
+
+volatile double _q0 = 0,
+                _q1 = 1,
+                _q2 = 0,
                 _q3 = 0;
 
 unsigned int checksum = 0,
@@ -46,39 +53,39 @@ unsigned int checksum = 0,
              altSet,
              Xrot = 360,
              Yrot = 360;
- 
+
 volatile int liDARval = 0,
              strength = 0;
-              
-double pitch, 
-       roll, 
+
+double pitch,
+       roll,
        yaw,
        alt,
        dt = 0,
        I;
 
 double X_Full [6] = {0, 0, 0, 0, 0, 0},
-       X_int [6],
-       X_old [6],
-       U [4] = {50, 0, 0, 0},
-       R [6] = {0, 0, 0, 0, 0, 0};
-      
-double K [4][6] = {{
-        0, 0, 0, 0, 0, 0,
-       },
-       {
-        38.7298, 0, 0, 4.5102, 0, 0,
-       },
-       {
-        0, 38.7298, 0, 0, 4.5104, 0,
-       },
-       {
-        0, 0, 14.1421, 0, 0, 14.1474,
-       },
-       };
+                    X_int [6],
+                    X_old [6],
+                    U [4] = {50, 0, 0, 0},
+                            R [6] = {0, 0, 0, 0, 0, 0};
 
-volatile unsigned int overflow0=0;
-volatile uint8_t temp[10];
+double K [4][6] = {{
+    0, 0, 0, 0, 0, 0,
+  },
+  {
+    38.7298, 0, 0, 4.5102, 0, 0,
+  },
+  {
+    0, 38.7298, 0, 0, 4.5104, 0,
+  },
+  {
+    0, 0, 14.1421, 0, 0, 14.1474,
+  },
+};
+
+char Dcode[3];
+uint16_t Ncode;
 
 /*=================================================================================
    SETUP
@@ -96,33 +103,25 @@ void set_liDAR() {
   Serial1.write(0x06);
 }
 
-void setup(void)
-{
-
-  //SerialUSB1.begin(115200);
-  Serial1.begin(115200);
-  Serial.begin(115200);
-  set_liDAR();
-
+void CalibrateESCs() {
   esc1.attach(4);
   esc2.attach(5);
   esc3.attach(6);
   esc4.attach(7);
-  delay(1000);
-
+  delay(100);
   esc1.write(30);
   esc2.write(30);
   esc3.write(30);
   esc4.write(30);
   delay(2000);
-  for (int i=30;i>20;i--){
+  for (int i = 30; i > 20; i--) {
     esc1.write(i);
     esc2.write(i);
     esc3.write(i);
     esc4.write(i);
     delay(50);
   }
-  for(int i=20;i<35;i++){
+  for (int i = 20; i < 35; i++) {
     esc1.write(i);
     esc2.write(i);
     esc3.write(i);
@@ -135,22 +134,40 @@ void setup(void)
   esc3.write(50);
   esc4.write(50);
   delay(5000);
+}
+
+void setup()
+{
+
+  Serial.begin(250000);
+  Serial1.begin(115200);
+  delay(100);
+  set_liDAR();
 
   if (!bno.begin())
   {
     /* There was a problem detecting the BNO055 ... check your connections */
     Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
-    while (1);
+    //while (1){};
+  }
+  bno.setExtCrystalUse(true);
+
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 6; j++) {
+      K[i][j] *= LQRmult;
+    }
   }
 
+  CalibrateESCs();
 
-  bno.setExtCrystalUse(true);
+  
 
   /* Initialize timed functions */
 
-  USART1_receiveData.begin(receive_data, 5000);
-  BNO055_getSampleTimer.begin(get_IMU_sample,10000);
-  TFMini_getDistance.begin(get_Distance_sample,5000);
+  USART1_receiveData.begin(receiveData, 10000);
+  //BNO055_getSampleTimer.begin(get_IMU_sample, 10000);
+
+
   delay(500);
 
   noInterrupts();
@@ -163,12 +180,6 @@ void setup(void)
   R[1] = asin(2.0 * (q2 * q0 - q3 * q1));
   R[2] = -atan2(2.0 * (q3 * q0 + q1 * q2) , - 1.0 + 2.0 * (q0 * q0 + q1 * q1));
 
-  for(int i=0; i<4; i++){
-    for(int j=0; i<6; i++){
-      K[i][j] *= LQRmult;
-      Serial.print(K[i][j]);    }
-  }
-  
 }
 
 /*-------------------------------------------------------------------------------
@@ -205,8 +216,6 @@ void loop(void)
   float d_pitch = (pitch - pitch_old) / dt;
   float d_yaw = (yaw - yaw_old) / dt;
 
-
-
   X_Full[0] = roll;
   X_Full[1] = pitch;
   X_Full[2] = yaw;
@@ -220,9 +229,8 @@ void loop(void)
 
   IntegralTracker();
   ELQR_calc();
-  //printData();
+  AltitudePID();
   commandESCs();
-  
 
   delay(BNO055_SAMPLERATE_DELAY_MS);
 
@@ -262,123 +270,133 @@ void get_Distance_sample() {
       t2 <<= 8;
       t2 += t1;
       strength = t2;
-      for (int i = 0; i < 2; i++)Serial1.read(); // byte 7, 8 are ignored
-      checksum = Serial1.read();
+      for (int i = 0; i < 3; i++)Serial1.read(); // byte 7, 8 are ignored
     }
   }
 }
 
 
-FASTRUN void ELQR_calc(){
+FASTRUN void ELQR_calc() {
 
-  for(int i=1; i<4; i++){
+  for (int i = 1; i < 4; i++) {
     U[i] = 0;
   }
-  
-  for(int i = 0; i < 4; i++){
-    for(int j = 0; j < 6; j++){
-      U[i]+= K[i][j] * (X_Full[j] - R[j]);
+
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 6; j++) {
+      U[i] += K[i][j] * (X_Full[j] - R[j]);
     }
   }
 }
 
-FASTRUN void IntegralTracker(){
-  
-  for (int i = 0; i < 3; i++){
-    X_int[i] += (dt/2)*(X_old[i]+X_Full[i]);
-    X_int[i+3] = X_Full[i];
+FASTRUN void IntegralTracker() {
+
+  for (int i = 0; i < 3; i++) {
+    X_int[i] += (dt / 2) * (X_old[i] + X_Full[i]);
+    X_int[i + 3] = X_Full[i];
 
   }
 }
 
-FASTRUN void AltitudePID(){
+FASTRUN void AltitudePID() {
 
-  
-  float E = R[5]-alt;
+
+  float E = R[5] - alt;
   float P = E;
-  I += E*dt;
-  float D = (E-E_old)/dt;
-  
-  
-  U[0] = kp*P + ki*I + kd*D;
+  I += E * dt;
+  float D = (E - E_old) / dt;
+
+
+  U[0] = kp * P + ki * I + kd * D;
   E_old = E;
-  
+
 }
 
 void commandESCs() {
 
-  int e1 = U[0] + U[1] + U[3];
-  int e2 = U[0] + U[2] - U[3];
-  int e3 = U[0] - U[1] - U[3];
-  int e4 = U[0] - U[2] + U[3];
+  e1 = U[0] + U[1] + U[3];
+  e2 = U[0] + U[2] - U[3];
+  e3 = U[0] - U[1] - U[3];
+  e4 = U[0] - U[2] + U[3];
 
-  
-  if((e1<100)&&(e1>50)){
+
+  if ((e1 < 100) && (e1 > 50)) {
     esc1.write(e1);
-    Serial.println(e1);
+    //Serial.println(e1);
   }
-  if((e2<100)&&(e2>50)){
+  if ((e2 < 100) && (e2 > 50)) {
     esc2.write(e2);
-    Serial.println(e2);
+    //Serial.println(e2);
   }
-  if((e4<100)&&(e4>50)){
+  if ((e4 < 100) && (e4 > 50)) {
     esc3.write(e4);
-    Serial.println(e4);
+    //Serial.println(e4);
   }
-  if((e3<100)&&(e4>50)){
+  if ((e3 < 100) && (e4 > 50)) {
     esc4.write(e3);
-    Serial.println(e3);
+    //Serial.println(e3);
   }
- 
+
 }
 
 void printData() {
 
   //Serial.print(',');
-  Serial.print(roll, 2), Serial.print(',');
-  Serial.print(pitch, 2), Serial.print(',');
-  Serial.print(yaw, 2), Serial.print(',');
-  Serial.print(" altitude: ,"), Serial.print(alt), Serial.println(", cm");
+  //Serial.print(roll, 2), Serial.print(',');
+  //Serial.print(pitch, 2), Serial.print(',');
+  //Serial.print(yaw, 2), Serial.print(',');
+  Serial.print(" altitude: ,"), Serial.print(alt), Serial.println(", cm, ");
+  Serial.println(U[0]);
 
 }
 
-void receive_data() {
+void receiveData() {
 
-  while (Serial.available() > 6)
-    { 
-      check1 = Serial.read();
-      check2 = Serial.read();
-      
-      if ((check1 == 0x59) && (check2 == 0x59))
-      {
-          unsigned int t1 = (Serial.read()); // byte 3 = AltSet_L
-          unsigned int t2 = (Serial.read()); // byte 4 = AltSet_H
-          t2 <<= 8;
-          t2 += t1;
-          altSet = t2/5;
-          t1 = (Serial.read()); // byte 5 = Xrot_L
-          t2 = (Serial.read()); // byte 6 = Yrot_H
-          t2 <<= 8;
-          t2 += t1;
-          Xrot = t2;
-          t1 = (Serial.read()); // byte 7 = Yrot_L
-          t2 = (Serial.read()); // byte 8 = Yrot_H
-          t2 <<= 8;
-          t2 += t1;
-          Yrot = t2;
-          unsigned int checksum = Serial.read();
-          if (checksum == (((uint8_t)altSet + (uint8_t)Xrot + (uint8_t)Yrot)&255)){
-              //R[0] = ((Xrot-360)/4)*(PI/180);
-              //R[1] = ((Yrot-360)/4)*(PI/180);
-              //R[5] = altSet/4;
-          }
+  if (Serial.available() >= 5) {
+    
+    if ((Serial.read() == 0x20) && (Serial.read() == 0x20))
+    {
+      char temp = Serial.read();
+      if (temp == 'a') {
+        Serial.print("-x: ");
+        Dcode[0] = '-', Dcode[1] = 'x';
+        digitalWrite(13, HIGH);
+      } else if (temp == 'w') {
+        Serial.print("+y: ");
+        Dcode[0] = '+', Dcode[1] = 'y';
+        digitalWrite(13, HIGH);
+      } else if (temp == 's') {
+        Serial.print("-y: ");
+        Dcode[0] = '-', Dcode[1] = 'y';
+        digitalWrite(13, HIGH);
+      } else if (temp == 'd') {
+        Serial.print("+x: ");
+        Dcode[0] = '+', Dcode[1] = 'x';
+        digitalWrite(13, HIGH);
+      } else if (temp == 'H') {
+        Serial.print("HOME: ");
+        Dcode[0] = 'H', Dcode[1] = 'O';
+        digitalWrite(13, HIGH);
       } else {
-        Xrot = 360;
-        Yrot = 360;
+        Serial.print("NULL");
+        Dcode[0] = 'N', Dcode[1] = 'A';
       }
+      uint16_t t1 = Serial.read();
+      uint16_t t2 = Serial.read();
+      t2 <<= 8;
+      t1 += t2;
+      if (!((Dcode[0] == 'N') || (Dcode[1] == 'A'))) {
+        Ncode = t1;
+        Serial.print(Ncode);
+      }
+      delay(100);
+
+      digitalWrite(13, LOW);
+      Serial.println();
+    }
+  } else {
+    delay(100);
+    digitalWrite(13, LOW);
   }
 
-//  Serial.println(R[0]);
-//  Serial.println(R[1]);
-//  Serial.println(R[5]);
 }
