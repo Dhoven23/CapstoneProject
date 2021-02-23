@@ -8,13 +8,21 @@
 
 /* Set controller constants */
 
-#define kp 1
-#define ki 0.1
-#define kd 0.5
-#define LQRmult 0.25
+#define kp 2
+#define ki 0.5
+#define kd 0.01
+#define LQRmult 0.75
+#define filtAlt 0.95
+#define filtPID 0.95
+
+/* Define motor attach pins */
+#define ESC1 6
+#define ESC2 7
+#define ESC3 5
+#define ESC4 4
 
 /* Set the delay between fresh samples */
-#define BNO055_SAMPLERATE_DELAY_MS 1
+#define BNO055_SAMPLERATE_DELAY_MS 0
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
 
@@ -47,10 +55,13 @@ volatile double _q0 = 0,
                 _q2 = 0,
                 _q3 = 0;
 
+volatile float liDARold = 0,
+               _lidar = 0;
+
 unsigned int checksum = 0,
              check2 = 0,
              check1,
-             altSet,
+             altSet = 10,
              Xrot = 360,
              Yrot = 360;
 
@@ -67,8 +78,9 @@ double pitch,
 double X_Full [6] = {0, 0, 0, 0, 0, 0},
                     X_int [6],
                     X_old [6],
-                    U [4] = {50, 0, 0, 0},
-                            R [6] = {0, 0, 0, 0, 0, 0};
+                    U [4] = {0, 0, 0, 0},
+                    Rcal[3] = {0, 0, 0},
+                    R [6] = {0, 0, 0, 0, 0, 0};
 
 double K [4][6] = {{
     0, 0, 0, 0, 0, 0,
@@ -103,11 +115,34 @@ void set_liDAR() {
   Serial1.write(0x06);
 }
 
-void CalibrateESCs() {
-  esc1.attach(4);
-  esc2.attach(5);
-  esc3.attach(6);
-  esc4.attach(7);
+void setup()
+{
+
+  Serial.begin(250000);
+  Serial1.begin(115200);
+  Serial4.begin(57600);
+  delay(100);
+  set_liDAR();
+
+  while (!bno.begin())
+  {
+    /* There was a problem detecting the BNO055 ... check your connections */
+    Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
+    delay(200);
+  }
+  Serial.print("IMU found\n");
+  bno.setExtCrystalUse(true);
+
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 6; j++) {
+      K[i][j] *= LQRmult;
+    }
+  }
+
+  esc1.attach(ESC1);
+  esc2.attach(ESC2);
+  esc3.attach(ESC3);
+  esc4.attach(ESC4);
   delay(100);
   esc1.write(30);
   esc2.write(30);
@@ -134,38 +169,13 @@ void CalibrateESCs() {
   esc3.write(50);
   esc4.write(50);
   delay(5000);
-}
 
-void setup()
-{
 
-  Serial.begin(250000);
-  Serial1.begin(115200);
-  delay(100);
-  set_liDAR();
-
-  if (!bno.begin())
-  {
-    /* There was a problem detecting the BNO055 ... check your connections */
-    Serial.print("Ooops, no BNO055 detected ... Check your wiring or I2C ADDR!");
-    //while (1){};
-  }
-  bno.setExtCrystalUse(true);
-
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 6; j++) {
-      K[i][j] *= LQRmult;
-    }
-  }
-
-  CalibrateESCs();
-
-  
 
   /* Initialize timed functions */
 
   USART1_receiveData.begin(receiveData, 10000);
-  //BNO055_getSampleTimer.begin(get_IMU_sample, 10000);
+  BNO055_getSampleTimer.begin(get_IMU_sample, 10000);
 
 
   delay(500);
@@ -179,6 +189,10 @@ void setup()
   R[0] = -atan2(2.0 * (q3 * q2 + q0 * q1) , 1.0 - 2.0 * (q1 * q1 + q2 * q2));
   R[1] = asin(2.0 * (q2 * q0 - q3 * q1));
   R[2] = -atan2(2.0 * (q3 * q0 + q1 * q2) , - 1.0 + 2.0 * (q0 * q0 + q1 * q1));
+  Rcal[0] = R[0];
+  Rcal[1] = R[1];
+  Rcal[2] = R[2];
+
 
 }
 
@@ -199,11 +213,14 @@ void loop(void)
   float q2 = _q2;
   float q3 = _q3;
   get_Distance_sample();
+  _lidar = (1 - filtAlt) * liDARval + filtAlt * liDARold;
+  liDARold = _lidar;
+  alt = _lidar * cos(roll) * cos(pitch);
   interrupts();
 
   //setup derivatives
   float roll_old = roll;
-  float pitch_old = roll;
+  float pitch_old = pitch;
   float yaw_old = yaw;
 
   //quaternion conversion
@@ -225,12 +242,11 @@ void loop(void)
 
   // cosine error removal (altitude)
 
-  alt = liDARval * cos(roll) * cos(pitch);
-
   IntegralTracker();
   ELQR_calc();
   AltitudePID();
   commandESCs();
+  printData();
 
   delay(BNO055_SAMPLERATE_DELAY_MS);
 
@@ -301,101 +317,143 @@ FASTRUN void IntegralTracker() {
 FASTRUN void AltitudePID() {
 
 
-  float E = R[5] - alt;
+  float E = altSet - alt;
   float P = E;
-  I += E * dt;
+  if ((I < 30) && (I > (-30))) {
+    I += E * dt;
+  } else {
+    if (I > 0)I =29;
+    if (I < 0)I =-29;
+  }
   float D = (E - E_old) / dt;
 
 
-  U[0] = kp * P + ki * I + kd * D;
+  U[0] = filtPID * U[0] + (1 - filtPID) * (kp * P + ki * I + kd * D);
   E_old = E;
 
 }
 
 void commandESCs() {
 
-  e1 = U[0] + U[1] + U[3];
-  e2 = U[0] + U[2] - U[3];
-  e3 = U[0] - U[1] - U[3];
-  e4 = U[0] - U[2] + U[3];
+  e1 = U[0] - U[1] + U[2];
+  e2 = U[0] - U[1] - U[2];
+  e3 = U[0] + U[1] - U[2];
+  e4 = U[0] + U[1] + U[2];
 
 
-  if ((e1 < 100) && (e1 > 50)) {
+  if ((e1 < 90) && (e1 > 40)) {
     esc1.write(e1);
-    //Serial.println(e1);
+    Serial4.print("1 "), Serial4.println(e1);
   }
-  if ((e2 < 100) && (e2 > 50)) {
+  if ((e2 < 90) && (e2 > 40)) {
     esc2.write(e2);
-    //Serial.println(e2);
+    Serial4.print("2 "), Serial4.println(e2);
   }
-  if ((e4 < 100) && (e4 > 50)) {
-    esc3.write(e4);
-    //Serial.println(e4);
+  if ((e4 < 90) && (e4 > 40)) {
+    esc3.write(e3);
+    Serial4.print("3 "), Serial4.println(e3);
   }
-  if ((e3 < 100) && (e4 > 50)) {
-    esc4.write(e3);
-    //Serial.println(e3);
+  if ((e3 < 90) && (e4 > 40)) {
+    esc4.write(e4);
+    Serial4.print("4 "), Serial4.println(e4);
   }
 
 }
 
 void printData() {
 
-  //Serial.print(',');
-  //Serial.print(roll, 2), Serial.print(',');
-  //Serial.print(pitch, 2), Serial.print(',');
-  //Serial.print(yaw, 2), Serial.print(',');
-  Serial.print(" altitude: ,"), Serial.print(alt), Serial.println(", cm, ");
-  Serial.println(U[0]);
+  //  Serial.print(',');
+    Serial4.print(roll, 2), Serial4.print(',');
+    Serial4.print(pitch, 2), Serial4.print(',');
+    Serial4.print(yaw, 2), Serial4.println(',');
+    Serial4.print(altSet), Serial4.println();
+  //Serial.print("RawValue: "),Serial.println(liDARval);
+  //  Serial.print("altitude: ,"), Serial.print(alt), Serial.print(" cm, U[0] = ");
+//    Serial.println(U[0]);
+//    Serial.println(U[1]);
+//    Serial.println(U[2]);
+//    Serial.println(U[3]);
+  //  Serial.println("X[Full] = ");
+  //  Serial.println(X_Full[0]);
+  //  Serial.println(X_Full[1]);
+  //  Serial.println(X_Full[2]);
+  //  Serial.println(X_Full[3]);
+  //  Serial.println(X_Full[4]);
+  //  Serial.println(X_Full[5]);
+  
+  
+  
+  //Serial.print("4 "), Serial.println(e4);
+//  Serial.print("R[0] : "), Serial.println(R[0]);
+//  Serial.print("R[1] : "), Serial.println(R[1]);
+
+
 
 }
 
 void receiveData() {
 
-  if (Serial.available() >= 5) {
-    
-    if ((Serial.read() == 0x20) && (Serial.read() == 0x20))
+  if (Serial4.available() >= 5) {
+
+    if ((Serial4.read() == 0x20) && (Serial4.read() == 0x20))
     {
-      char temp = Serial.read();
+      char temp = Serial4.read();
       if (temp == 'a') {
-        Serial.print("-x: ");
+        //Serial.print("-x: ");
         Dcode[0] = '-', Dcode[1] = 'x';
+        R[0] += 0.01;
         digitalWrite(13, HIGH);
       } else if (temp == 'w') {
-        Serial.print("+y: ");
+        //Serial.print("+y: ");
         Dcode[0] = '+', Dcode[1] = 'y';
+        R[1] += 0.01;
         digitalWrite(13, HIGH);
       } else if (temp == 's') {
-        Serial.print("-y: ");
+        //Serial.print("-y: ");
         Dcode[0] = '-', Dcode[1] = 'y';
+        R[1] -= 0.01;
         digitalWrite(13, HIGH);
       } else if (temp == 'd') {
-        Serial.print("+x: ");
+        //Serial.print("+x: ");
         Dcode[0] = '+', Dcode[1] = 'x';
+        R[0] -= 0.01;
         digitalWrite(13, HIGH);
       } else if (temp == 'H') {
-        Serial.print("HOME: ");
+        //Serial.print("HOME: ");
         Dcode[0] = 'H', Dcode[1] = 'O';
+        R[0] = Rcal[0];
+        R[1] = Rcal[1];
         digitalWrite(13, HIGH);
+      } else if (temp == 'r') {
+        Serial.print("+z: ");
+        Dcode[0] = '+', Dcode[1] = 'z';
+        altSet += 1;
+      } else if (temp == 'f') {
+        Serial.print("-z: ");
+        Dcode[0] = '-', Dcode[1] = 'z';
+        altSet -= 1;
+        digitalWrite(13, HIGH);
+      } else if (temp == 'K') {
+          altSet = 20;
+          Serial.println("Halted!!");
+          
       } else {
-        Serial.print("NULL");
+        //Serial.print("NULL");
         Dcode[0] = 'N', Dcode[1] = 'A';
       }
-      uint16_t t1 = Serial.read();
-      uint16_t t2 = Serial.read();
+      uint16_t t1 = Serial4.read();
+      uint16_t t2 = Serial4.read();
       t2 <<= 8;
       t1 += t2;
       if (!((Dcode[0] == 'N') || (Dcode[1] == 'A'))) {
         Ncode = t1;
-        Serial.print(Ncode);
+        //Serial.print(Ncode);
       }
-      delay(100);
 
       digitalWrite(13, LOW);
-      Serial.println();
+      //Serial.println();
     }
   } else {
-    delay(100);
     digitalWrite(13, LOW);
   }
 
