@@ -2,7 +2,7 @@ clear all, close all, clc
 
 %% declare physical dimensions
 g = 9.8066;
-m = 0.915;
+m = 0.975;
 Ixx = 0.004412;
 Iyy = 0.004443;
 Izz = 0.005302;
