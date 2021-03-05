@@ -1,0 +1,14 @@
+Codes:
+
+0 - Right Joystick Lft/Rgt
+1 - Right Joystick Up/Dn
+2 - Left trigger pull
+3 - Right Joystick Lft/Rgt
+4 - Right Joystick Up/Dn
+5 - Right trigger pull
+17 - hat Up/down
+16 - hat Lft/Rgt
+308 - left trig BTN
+309 right trig BTN
+
+
