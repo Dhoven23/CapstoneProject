@@ -22,14 +22,14 @@
 #define ki 0//0.5                         // Altitude PID integral constant
 #define kd 0.01                          // Altitude PID derivative constant
 #define filtAlt 0.95                    // Altitude Estimation Filter constant
-#define LQRmult 0.6                    // Scaling factor for control law, varies between 0.5-1
-#define LQR_P 0.35                    // LQR_P constant
-#define LQR_E 2.25                   // Integrator 
+#define LQRmult 0.475                  // Scaling factor for control law, varies between 0.5-1
+#define LQR_P 0.1                     // LQR_P constant
+#define LQR_E 1.75                   // Integrator 
 #define INTEGRATOR_CLAMP 0.15       // Clamping term for integrator #define filtPID 0.95 
 #define SLEW_LIMIT 10              // controller gimbal limit
-#define SLEW_FILTER 0.75          // Controller rate limiter (0-1), higher = slower/stabler
-#define D_COMP 0.5               // Coupling term for derivative. sets the derivative setpoints as a function of positional error
-
+#define SLEW_FILTER 0.85          // Controller rate limiter (0-1), higher = slower/stabler
+#define D_COMP 0.075             // Coupling term for derivative. sets the derivative setpoints as a function of positional error
+#define V_SPD 0.01              // Vertical speed reduction rate 
 
 /* ================================================================== =======================
   Define communication setup */
@@ -59,6 +59,11 @@
 #endif
 
 
+#define CMD_SERIAL Serial       // Listen port for waypoints
+#define TELEMETRY1 Serial4
+#define TELEMETRY2 Serial
+
+
 /* ================================================================== =======================
   Define motor setup */
 
@@ -72,7 +77,7 @@
 
 /* Set the delay between iterations */
 
-#define MAIN_DELAY 0.5
+#define MAIN_DELAY 1
 
 /* ================================================================== ======================
   Declare Library Objects
@@ -103,6 +108,8 @@ float e1 = 0,
       e4 = 0,
       Ecal[4] = {0, 0, 0, 0};
 
+volatile int counter = 0;
+
 volatile double _q0 = 0,
                 _q1 = 1,
                 _q2 = 0,
@@ -128,6 +135,7 @@ double pitch,
        d_pitch,
        d_yaw,
        alt = 0,
+       d_alt,
        dt = 0,
        I;
 
@@ -142,11 +150,11 @@ double X_Full [6] = {0, 0, 0, 0, 0, 0}, // RAM1 arrays
 double K [4][6] = {{
     0, 0, 0, 0, 0, 0,
   }, {
-    25, 0, 0, -35, 0, 0,
+    17.5, 0, 0, -100, 0, 0,
   }, {
-    0, 25, 0, 0, -35, 0,
+    0, 17.5, 0, 0, -100, 0,
   }, {
-    0, 0, 0, 0, 0, 0,
+    0, 0, 5, 0, -10, 0,
   },
 };
 
@@ -161,7 +169,8 @@ double U [4] = {20, 0, 0, 0},
                Rcal[3] = {0, 0, 0};
 
 bool STOP_FLAG = false;
-bool TAKEOFF_FLAG = false;
+bool TAKEOFF_FLAG = true;
+bool VERT_SPEED = false;
 
 /*= == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == == = == == == == == == == =
        SETUP */
@@ -211,6 +220,8 @@ void calibrateESCs() {
   esc4.write(40);
   delay(2000);
 }
+
+
 void setup()
 
 {
@@ -290,15 +301,17 @@ void loop(void) {
 
   _lidar = (1 - filtAlt) * liDARval + filtAlt * liDARold;
   liDARold = _lidar;
-  alt = _lidar * cos(roll) * cos(pitch);
+  double _alt = _lidar * cos(roll) * cos(pitch);
+  d_alt *= filtAlt;
+  d_alt += (1 - filtAlt) * (_alt - alt) / dt;
+  alt = _alt;
 
-
-//  if (alt < (initAlt + 1)) {
-//
-//    TAKEOFF_FLAG = false;
-//  } else {
-//    TAKEOFF_FLAG = true;
-//  }
+  //  if (alt < (initAlt + 1)) {
+  //
+  //    TAKEOFF_FLAG = false;
+  //  } else {
+  //    TAKEOFF_FLAG = true;
+  //  }
 
 
   // cosine error removal (altitude)
@@ -306,13 +319,20 @@ void loop(void) {
   get_IMU_sample();
   ELQR_calc();
   AltitudePID();
+
+  if (VERT_SPEED == true) {
+    vertSpeedHold();
+  }
   receiveData();
-  printData();
+
+  if(millis()%50<5){
+    printData();
+  }
 
   // Make sure Vehicle isn't dying
   OS(); // Oh Sh*t method
 
-  if (TAKEOFF_FLAG) {
+  if ((TAKEOFF_FLAG) && (millis() > 2000)) {
     IntegralTracker();
   }
 
@@ -515,6 +535,13 @@ void STOP() {
   esc4.write(30);
 }
 
+void vertSpeedHold() {
+  double ERR = 0 - d_alt;
+  e1 += ERR * V_SPD;
+  e2 += ERR * V_SPD;
+  e3 += ERR * V_SPD;
+  e4 += ERR * V_SPD;
+}
 
 
 void commandESCs() {
@@ -586,115 +613,106 @@ void commandESCs() {
 }
 void printData() {
 
-  //
-     RADIO_SERIAL.print("1: "), RADIO_SERIAL.print((int)e1);
-     RADIO_SERIAL.print(", 2: "), RADIO_SERIAL.print((int)e2);
-     RADIO_SERIAL.print(", 3: "), RADIO_SERIAL.print((int)e3);
-     RADIO_SERIAL.print(", 4: "), RADIO_SERIAL.println((int)e4);
-  //   RADIO_SERIAL.println();
-  //
-  //SERIAL_USB.print(millis());
-  SERIAL_USB.print("1: "), SERIAL_USB.print((int)e1);
-  SERIAL_USB.print(", 2: "), SERIAL_USB.print((int)e2);
-  SERIAL_USB.print(", 3: "), SERIAL_USB.print((int)e3);
-  SERIAL_USB.print(", 4: "), SERIAL_USB.print((int)e4);
 
-  // SERIAL_USB.print("X_int1: "),
-  // Serial.println(X_int[0]);
-  // Serial.println(dt, 4);
+  //TELEMETRY1.print(millis());
+  TELEMETRY1.print(", 1:,"), TELEMETRY1.print((int)e1);
+  TELEMETRY1.print(", 2:,"), TELEMETRY1.print((int)e2);
+  TELEMETRY1.print(", 3:,"), TELEMETRY1.print((int)e3);
+  TELEMETRY1.print(", 4:,"), TELEMETRY1.print((int)e4);
 
-  // // //
-  //
-  //
-  //   Serial.println();
-  //   SERIAL_USB.println(U[0]);
-  //   SERIAL_USB.println(U[1]);
-  //   SERIAL_USB.println(U[2]);
-  //   SERIAL_USB.println(U[3]);
-  //   Serial.println();
-  //
-  // SERIAL_USB.print("X[Full] = ");
-    SERIAL_USB.print(", roll: "), SERIAL_USB.print(X_Full[0], 2);
-    SERIAL_USB.print(", pitch: "), SERIAL_USB.print(X_Full[1], 2);
-    SERIAL_USB.print(", yaw: "), SERIAL_USB.print(X_Full[2], 2);
-   RADIO_SERIAL.print(", "),RADIO_SERIAL.print(X_Full[3], 3);
-   RADIO_SERIAL.print(", "),RADIO_SERIAL.print(X_Full[4], 3);
-   RADIO_SERIAL.print(", "),RADIO_SERIAL.println(X_Full[5], 3);
-   SERIAL_USB.print(", "),SERIAL_USB.print(X_Full[3], 3);
-   SERIAL_USB.print(", "),SERIAL_USB.print(X_Full[4], 3);
-   SERIAL_USB.print(", "),SERIAL_USB.print(X_Full[5], 3);
-   Serial.print(", Alt: "),Serial.print(alt);
-   if(TAKEOFF_FLAG){
-    Serial.println(", Integrators ON");
-   } else {
-    Serial.println(", Integrators OFF");
-   }
-
-  //  SERIAL_USB.print("  R[0] : "), SERIAL_USB.print(R[0]);
-  //  SERIAL_USB.print("R[1] : "), SERIAL_USB.println(R[1]);
+  TELEMETRY1.print(", roll:,"), TELEMETRY1.print(X_Full[0], 3);
+  TELEMETRY1.print(", pitch:,"), TELEMETRY1.print(X_Full[1], 3);
+  TELEMETRY1.print(", yaw:,"), TELEMETRY1.print(X_Full[2], 3);
+  TELEMETRY1.print(", "), TELEMETRY1.print(X_Full[3], 3);
+  TELEMETRY1.print(", "), TELEMETRY1.print(X_Full[4], 3);
+  TELEMETRY1.print(", "), TELEMETRY1.print(X_Full[5], 3);
+  TELEMETRY1.print("Alt: ,"), TELEMETRY1.print(alt);
+  if (TAKEOFF_FLAG) {
+    TELEMETRY1.print(",Integrators ON, ");
+  } else {
+    TELEMETRY1.print(",Integrators OFF, ");
+  }
+  if (VERT_SPEED) {
+    TELEMETRY1.print(", VERT_SPD_HOLD = true");
+  } else {
+    TELEMETRY1.print(", VERT_SPD_HOLD = false");
+  }
+  TELEMETRY1.println();
 }
 void receiveData() {
 
-  if (RADIO_SERIAL.available() >= 5) {
+  if (CMD_SERIAL.available() >= 5) {
 
-    if ((RADIO_SERIAL.read() == 0x20) && (RADIO_SERIAL.read() == 0x20)) {
+    if ((CMD_SERIAL.read() == 0x20) && (CMD_SERIAL.read() == 0x20)) {
 
-      char temp = RADIO_SERIAL.read();
-      if (temp == 'a') {
-        Dcode[0] = '-', Dcode[1] = 'x';
-        R[0] += 0.01;
-        digitalWrite(13, HIGH);
-      } else if (temp == 'w') {
-        Dcode[0] = '+', Dcode[1] = 'y';
-        R[1] += 0.01;
-        digitalWrite(13, HIGH);
-      } else if (temp == 's') {
-        Dcode[0] = '-', Dcode[1] = 'y'; R[1] -= 0.01;
-        digitalWrite(13, HIGH);
-      } else if (temp == 'd') {
-        Dcode[0] = '+',
-        Dcode[1] = 'x',
-        R[0] -= 0.01;
-        digitalWrite(13, HIGH);
-      } else if (temp == 'I') {
-        TAKEOFF_FLAG = !(TAKEOFF_FLAG);
-      } else if (temp == 'H') {
-        Dcode[0] = 'H',
-                   Dcode[1] = 'O';
-        R[0] = Rcal[0];
-        R[1] = Rcal[1];
-        X_int[0] = 0;
-        X_int[1] = 0;
-        X_int[2] = 0;
-        STOP_FLAG = false;
+      char temp = CMD_SERIAL.read();
 
-        digitalWrite(13, HIGH);
-      } else if (temp == 'Y') {
-        STOP_FLAG = false;
-      } else if (temp == 'r') {
-        Dcode[0] = '+',
-                   Dcode[1] = 'z';
-        U[0] += 1;
-      } else if (temp == 'f') {
-        Dcode[0] = '-',
-                   Dcode[1] = 'z',
-                              U[0] -= 1;
-        digitalWrite(13, HIGH);
-      } else if (temp == 'K') {
-        U[0] = 0;
-        STOP_FLAG = true;
-
-      } else {
-        Dcode[0] = 'N', Dcode[1] = 'A';
-      }
-      uint16_t t1 = RADIO_SERIAL.read();
-      uint16_t t2 = RADIO_SERIAL.read();
+      uint16_t t1 = CMD_SERIAL.read();
+      uint16_t t2 = CMD_SERIAL.read();
 
       t2 <<= 8;
       t1 += t2;
 
       if (!((Dcode[0] == 'N') || (Dcode[1] == 'A'))) {
         Ncode = t1;
+
+        if (temp == 'a') {
+          Dcode[0] = '-', Dcode[1] = 'x';
+          R[0] += 0.01;
+          digitalWrite(13, HIGH);
+        } else if (temp == 'w') {
+          Dcode[0] = '+', Dcode[1] = 'y';
+          R[1] += 0.01;
+          digitalWrite(13, HIGH);
+        } else if (temp == 's') {
+          Dcode[0] = '-', Dcode[1] = 'y'; R[1] -= 0.01;
+          digitalWrite(13, HIGH);
+        } else if (temp == 'd') {
+          Dcode[0] = '+',
+                     Dcode[1] = 'x',
+                                R[0] -= 0.01;
+          digitalWrite(13, HIGH);
+        } else if (temp == 'q') {
+          U[3] += 1;
+        } else if (temp == 'e') {
+          U[3] -= 1;
+        } else if (temp == 'V') {
+          VERT_SPEED = !VERT_SPEED;
+        } else if (temp == 'I') {
+          TAKEOFF_FLAG = !(TAKEOFF_FLAG);
+        } else if (temp == 'H') {
+          Dcode[0] = 'H',
+                     Dcode[1] = 'O';
+          R[0] = Rcal[0];
+          R[1] = Rcal[1];
+          X_int[0] = 0;
+          X_int[1] = 0;
+          X_int[2] = 0;
+          STOP_FLAG = false;
+
+          digitalWrite(13, HIGH);
+        } else if (temp == 'Y') {
+          STOP_FLAG = false;
+        } else if (temp == 'r') {
+          Dcode[0] = '+',
+                     Dcode[1] = 'z';
+          U[0] += t1;
+          VERT_SPEED = false;
+        } else if (temp == 'f') {
+          Dcode[0] = '-',
+                     Dcode[1] = 'z',
+                                U[0] -= t1;
+          VERT_SPEED = false;
+
+          digitalWrite(13, HIGH);
+        } else if (temp == 'K') {
+          U[0] = 0;
+          STOP_FLAG = true;
+
+        } else {
+          Dcode[0] = 'N', Dcode[1] = 'A';
+        }
+
       }
       digitalWrite(13, LOW);
     }

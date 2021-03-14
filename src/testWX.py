@@ -32,10 +32,18 @@ def down(event=None):
     send('f1')
 def KILL(event=None):
     send('K0')
-
+def switch(event=None):
+    send('I0')
+def yawR(event=None):
+    send('q1')
+def yawL(event=None):
+    send('e1')
 def OnEnterPressed(event):
     send(event.GetString())
-
+def VertHold(event=None):
+    send('V0')
+def Launch(event = None):
+    send('r13')
 
 app = wx.App()
 
@@ -49,7 +57,10 @@ btnH = wx.Button(panel, label = "\nHVR\n", pos = (110,60))
 btnUp= wx.Button(panel, label = "\nUP\n",  pos = (25,225))
 btnDn= wx.Button(panel, label = "\nDN\n", pos = (195 ,225))
 btnK = wx.Button(panel, label = "\nKILL!\n",pos = (110,225))
-
+btnYL= wx.Button(panel, label = "\nYAWL\n", pos = (25, 5))
+btnYR= wx.Button(panel ,label = "\nYAWR\n", pos = (195, 5))
+btnV = wx.Button(panel, label = "\nVERT\nHOLD", pos = (195,115))
+btnL = wx.Button(panel, label = "\nLAUNCH\n", pos = (25,115))
 btnw.Bind(wx.EVT_BUTTON,forward)
 btna.Bind(wx.EVT_BUTTON,left)
 btns.Bind(wx.EVT_BUTTON,backward)
@@ -58,6 +69,10 @@ btnH.Bind(wx.EVT_BUTTON,hover)
 btnUp.Bind(wx.EVT_BUTTON,up)
 btnDn.Bind(wx.EVT_BUTTON,down)
 btnK.Bind(wx.EVT_BUTTON,KILL)
+btnYL.Bind(wx.EVT_BUTTON,yawL)
+btnYR.Bind(wx.EVT_BUTTON,yawR)
+btnV.Bind(wx.EVT_BUTTON,VertHold)
+btnL.Bind(wx.EVT_BUTTON,Launch)
 label = wx.StaticText(panel,-1,"Enter Command:",pos = (15,202))
 cmd = wx.TextCtrl(panel,style=wx.TE_PROCESS_ENTER,size = (50,20),pos = (175,199))
 
@@ -65,7 +80,7 @@ cmd.Bind(wx.EVT_TEXT_ENTER,OnEnterPressed)
 
 
 
-ser = serial.Serial('/dev/cu.usbserial-D308LP97',baudrate=57600)
+ser = serial.Serial('/dev/cu.usbmodem88151801')
 
 window.Show(True)
 app.MainLoop()
