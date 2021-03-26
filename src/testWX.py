@@ -1,6 +1,10 @@
 import serial
-
+import paho.mqtt.client as mqtt
 import wx
+
+client = mqtt.Client("Telemetry1")
+client.connect('raspberrypi.local')
+
 
 def send(word):
     data = bytearray()
@@ -14,7 +18,7 @@ def send(word):
     t2 = ((int(Ncode)>>8)&255)
     data.append(t1)
     data.append(t2)
-    ser.write(data)
+    client.publish("test",data)
 
 def forward(event=None):
     send('w1')
@@ -44,7 +48,7 @@ def VertHold(event=None):
     send('V0')
 def Launch(event = None):
     send('r13')
-
+    send('I0')
 app = wx.App()
 
 window = wx.Frame(None, title = "wxPython Frame", size = (300,350))
@@ -77,10 +81,6 @@ label = wx.StaticText(panel,-1,"Enter Command:",pos = (15,202))
 cmd = wx.TextCtrl(panel,style=wx.TE_PROCESS_ENTER,size = (50,20),pos = (175,199))
 
 cmd.Bind(wx.EVT_TEXT_ENTER,OnEnterPressed)
-
-
-
-ser = serial.Serial('/dev/cu.usbmodem88151801')
 
 window.Show(True)
 app.MainLoop()
