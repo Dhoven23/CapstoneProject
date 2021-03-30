@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "SPLV",
+			"path": ".."
+		},
+		{
+			"name": "MEE-460 benchmark",
+			"path": "../../MEE-460 benchmark"
+		}
+	],
+	"settings": {}
+}
