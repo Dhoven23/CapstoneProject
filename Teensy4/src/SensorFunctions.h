@@ -486,13 +486,13 @@ void printData()
      TELEMETRY1.print(",3:,"), TELEMETRY1.print((int)signal.e3);
       TELEMETRY1.print(",4:,"), TELEMETRY1.print((int)signal.e4);
        TELEMETRY1.print(",roll:,"), TELEMETRY1.print(X.Full[0], 3);
-       TELEMETRY1.print(",pitch:,"), TELEMETRY1.print(X.Full[1], 3);
-      TELEMETRY1.print(",yaw:,"), TELEMETRY1.print(X.Full[2], 3);
-     TELEMETRY1.print(","), TELEMETRY1.print(X.Full[3], 3);
-    TELEMETRY1.print(","), TELEMETRY1.print(X.Full[4], 3);
-   TELEMETRY1.print(","), TELEMETRY1.print(X.Full[5], 3);
-  TELEMETRY1.print(",Alt:,"), TELEMETRY1.print(altitude.alt);
-   TELEMETRY1.print("throttle"), TELEMETRY1.print(signal.throttle);
+        TELEMETRY1.print(",pitch:,"), TELEMETRY1.print(X.Full[1], 3);
+       TELEMETRY1.print(",yaw:,"), TELEMETRY1.print(X.Full[2], 3);
+      TELEMETRY1.print(","), TELEMETRY1.print(X.Full[3], 3);
+     TELEMETRY1.print(","), TELEMETRY1.print(X.Full[4], 3);
+    TELEMETRY1.print(","), TELEMETRY1.print(X.Full[5], 3);
+   TELEMETRY1.print(",Alt:,"), TELEMETRY1.print(altitude.alt);
+  TELEMETRY1.print("throttle"), TELEMETRY1.print(signal.throttle);
   
   if (global.TAKEOFF_FLAG)
   {
